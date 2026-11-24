@@ -4,7 +4,7 @@ import tempfile, shutil, subprocess, re
 root=Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory() as tmp:
     target=Path(tmp)/"pic_ai"
-    subprocess.run(["flutter","create","--platforms=android","--org","com.yichincho","--project-name","pic_ai",str(target)],check=True)
+    subprocess.run(["flutter","create","--no-pub","--platforms=android","--org","com.yichincho","--project-name","pic_ai",str(target)],check=True)
     for platform in ("android",):
         if not (root/platform).exists():
             shutil.copytree(target/platform,root/platform)
@@ -17,7 +17,7 @@ permissions="""<uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>"""
 if "READ_MEDIA_IMAGES" not in s:
     s=s.replace("<application",permissions+"\n    <application",1)
-s=s.replace("<application",\'<application android:allowBackup="false"\',1) if "android:allowBackup" not in s else s
+s=s.replace("<application", '<application android:allowBackup="false"', 1) if "android:allowBackup" not in s else s
 manifest.write_text(s)
 for gradle in (root/"android/app/build.gradle.kts",root/"android/app/build.gradle"):
     if gradle.exists():
