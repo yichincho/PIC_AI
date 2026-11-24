@@ -1,0 +1,27 @@
+name: Flutter build validation
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: flutter --version
+      - run: python3 tools/bootstrap.py
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter test
+      - run: flutter build apk --debug
+      # Do not publish binaries until third-party model rights have been verified.
+      - run: ls -lh build/app/outputs/flutter-apk/

@@ -1,14 +1,15 @@
 name: pic_ai
 description: Private local family photo search
 publish_to: none
-version: 0.1.0+1
+version: 0.2.0+2
 environment:
   sdk: '>=3.10.0 <4.0.0'
 dependencies:
   flutter:
     sdk: flutter
-  photo_manager: ^3.8.0
-  mediapipe_retrieval: ^0.4.1
+  photo_manager: ^3.12.0
+  offline_face_recognition: 0.1.0
+  mediapipe_retrieval: 0.4.1
   sqflite: ^2.4.2
   path: ^1.9.1
 dev_dependencies:

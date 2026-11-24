@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:offline_face_recognition/offline_face_recognition.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -28,6 +30,9 @@ class Gallery extends StatefulWidget {
 class _GalleryState extends State<Gallery> {
   Database? db;
   UniversalEmbedder? model;
+  OfflineFaceRecognition? faceEngine;
+  final faceCandidates = <String, Set<String>>{};
+  bool candidateMode = false;
   final query = TextEditingController();
   final assets = <String, AssetEntity>{};
   final rows = <String, Map<String, Object?>>{};
@@ -56,6 +61,7 @@ class _GalleryState extends State<Gallery> {
 
   Future<UniversalEmbedder> engine() async {
     if (model != null) return model!;
+    ModelStore.allowDownloads = true;
     final caps = await queryUniversalEmbedderCapabilities();
     model = await UniversalEmbedder.create(UniversalEmbedderOptions(
       model: RetrievalModels.embeddingGemma2TextVision,
@@ -84,7 +90,7 @@ class _GalleryState extends State<Gallery> {
           final previous=old.isEmpty? <String,Object?>{} : old.first;
           final modified=a.modifiedDateTime.millisecondsSinceEpoch;
           final same=previous['modified']==modified;
-          final loc=a.latLng;
+          final loc=await a.latlngAsync();
           final gps=loc!=null && (loc.latitude!=0 || loc.longitude!=0);
           final row=<String,Object?>{
             'id':a.id, 'shot':a.createDateTime.millisecondsSinceEpoch,
@@ -183,6 +189,102 @@ class _GalleryState extends State<Gallery> {
     });
     selected.clear();await refresh();
   }
+  Future<OfflineFaceRecognition> getFaceEngine() async {
+    return faceEngine ??= await OfflineFaceRecognition.create();
+  }
+  Future<String?> choosePerson(String title) async {
+    if(people.isEmpty) return null;
+    return showDialog<String>(context:context,builder:(ctx)=>SimpleDialog(
+      title:Text(title),
+      children:people.map((name)=>SimpleDialogOption(onPressed:()=>Navigator.pop(ctx,name),child:Text(name))).toList(),
+    ));
+  }
+  Future<File> tempPhoto(AssetEntity a, Directory dir) async {
+    final bytes=await a.thumbnailDataWithSize(const ThumbnailSize.square(1024));
+    if(bytes==null) throw StateError('無法取得縮圖');
+    return File('${dir.path}/photo.jpg').writeAsBytes(bytes,flush:true);
+  }
+  Future<void> enroll() async {
+    if(busy || selected.isEmpty || people.isEmpty)return;
+    final name=await choosePerson('選擇參考照片中的家人');
+    if(name==null || !mounted)return;
+    final yes=await showDialog<bool>(context:context,builder:(ctx)=>AlertDialog(
+      title:const Text('確認參考照片'),
+      content:const Text('請取得本人或監護人同意。每張選取照片只可包含該家人一張清楚正面臉孔，請勿選合照或其他人的照片。資料保留於本機。'),
+      actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('取消')),
+        FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('確認'))]));
+    if(yes!=true)return;
+    final ids=selected.toList();
+    setState((){busy=true;status='建立家人參考資料…';});
+    Directory? dir;
+    var ok=0, failed=0;
+    try {
+      final local=await getFaceEngine();
+      dir=await Directory.systemTemp.createTemp('pic_ai_reference_');
+      for(final id in ids){
+        try {
+          final file=await tempPhoto(assets[id]!,dir);
+          await local.register(image:file,id:'${name.length}:$name:$id',label:name);
+          await db!.insert('tags',{'photo':id,'person':name},conflictAlgorithm:ConflictAlgorithm.ignore);
+          ok++;
+        } catch(_){failed++;}
+      }
+      selected.clear();faceCandidates.clear();candidateMode=false;
+      await refresh();
+      if(mounted)setState(()=>status='已登錄 $ok 張參考照片，失敗 $failed 張。');
+    } catch(e){if(mounted)setState(()=>status='參考資料建立失敗：$e');}
+    finally{try{await dir?.delete(recursive:true);}finally{if(mounted)setState(()=>busy=false);}}
+  }
+  Future<void> findFamily() async {
+    if(busy || assets.isEmpty || people.isEmpty)return;
+    final name=await choosePerson('尋找哪位家人的候選照片？');
+    if(name==null)return;
+    setState((){busy=true;stop=false;status='正在本機搜尋人物候選…';});
+    Directory? dir;
+    var done=0, failed=0;
+    final matches=<String>[];
+    try {
+      final local=await getFaceEngine();
+      final templates=await local.listTemplates();
+      if(templates.isEmpty)throw StateError('請先登錄家人參考照片');
+      dir=await Directory.systemTemp.createTemp('pic_ai_scan_');
+      faceCandidates.clear();
+      for(final a in assets.values){
+        if(stop)break;
+        try{
+          final file=await tempPhoto(a,dir);
+          final found=await local.recognizeMultiple(image:file,limit:10);
+          final labels=<String>{};
+          for(final r in found){
+            final label=r.template?.label;
+            if(r.isMatch && label!=null && people.contains(label))labels.add(label);
+          }
+          if(labels.isNotEmpty)faceCandidates[a.id]=labels;
+          if(labels.contains(name))matches.add(a.id);
+        }catch(_){failed++;}
+        done++;
+        if(mounted && done%10==0)setState(()=>status='已比對 $done/${assets.length} 張；候選 ${matches.length} 張');
+      }
+      personFilter='';missing=false;placeFilter='';
+      candidateMode=true;
+      await refresh(order:matches);
+      if(mounted)setState(()=>status='候選 ${matches.length} 張；已比對 $done 張、失敗 $failed 張。請人工確認後才標記。');
+    }catch(e){if(mounted)setState(()=>status='人臉搜尋失敗：$e');}
+    finally{try{await dir?.delete(recursive:true);}finally{if(mounted)setState(()=>busy=false);}}
+  }
+  Future<void> batchPlace() async {
+    if(selected.isEmpty)return;
+    final name=await ask('將已選照片標記為同一人工確認地點');
+    if(name==null||name.isEmpty)return;
+    final ids=selected.toList();
+    await db!.transaction((tx)async{
+      for(final id in ids){
+        await tx.update('photos',{'place':name},where:'id=?',whereArgs:[id]);
+      }
+    });
+    for(final id in ids){rows[id]={...rows[id]!, 'place':name};}
+    selected.clear();await refresh();
+  }
   Future<void> detail(String id) async {
     final r=rows[id]!;
     final shot=r['shot'] as int;
@@ -226,6 +328,8 @@ class _GalleryState extends State<Gallery> {
       actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('取消')),
         FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('清除'))]));
     if(yes!=true)return;
+    try { await (await getFaceEngine()).clear(); } catch(e) {if(mounted)setState(()=>status='無法清除人臉參考資料：$e');return;}
+    faceCandidates.clear();candidateMode=false;
     await db!.transaction((tx)async{for(final t in ['tags','people','photos']){await tx.delete(t);}});
     assets.clear();rows.clear();results.clear();people.clear();selected.clear();personFilter='';placeFilter='';missing=false;
     if(mounted)setState(()=>status='本機資料已清除。');
@@ -243,6 +347,9 @@ class _GalleryState extends State<Gallery> {
           if(busy)TextButton(onPressed:()=>stop=true,child:const Text('停止掃描')),
           TextButton(onPressed:ready&&!busy?addPerson:null,child:const Text('新增家人')),
           TextButton(onPressed:!busy&&selected.isNotEmpty&&people.isNotEmpty?tag:null,child:Text('標記已選 ${selected.length} 張')),
+          OutlinedButton(onPressed:!busy&&selected.isNotEmpty&&people.isNotEmpty?enroll:null,child:const Text('登錄參考人臉')),
+          FilledButton(onPressed:!busy&&people.isNotEmpty&&assets.isNotEmpty?findFamily:null,child:const Text('找家人候選')),
+          TextButton(onPressed:!busy&&selected.isNotEmpty?batchPlace:null,child:const Text('整批設定地點')),
         ]),
         TextField(controller:query,enabled:!busy,decoration:InputDecoration(
           hintText:'例如：日本寺廟、海邊、生日蛋糕',
@@ -254,7 +361,7 @@ class _GalleryState extends State<Gallery> {
           TextButton(onPressed:busy?null:()async{final n=await ask('搜尋人工確認地點',placeFilter);if(n!=null){placeFilter=n;await refresh();}},child:Text(placeFilter.isEmpty?'地點篩選':placeFilter)),
           if(ranked)TextButton(onPressed:busy?null:()=>refresh(),child:const Text('取消語意排序'))
         ]),
-        const Text('家人標籤為人工確認；長按照片可查看地點線索。',style:TextStyle(fontSize:12)),
+        Text(candidateMode?'目前為人臉候選搜尋；請核對後再選取標記。':'家人標籤為人工確認；長按照片可查看地點線索。',style:const TextStyle(fontSize:12)),
       ])),
       Expanded(child:GridView.builder(gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:2,mainAxisSpacing:2),
         itemCount:results.length,itemBuilder:(context,i){
@@ -269,7 +376,7 @@ class _GalleryState extends State<Gallery> {
         })),
     ])),
   );
-  @override void dispose(){query.dispose(); model?.dispose();db?.close();super.dispose();}
+  @override void dispose(){query.dispose(); model?.dispose();faceEngine?.dispose();db?.close();super.dispose();}
 }
 
 class Thumb extends StatefulWidget {
