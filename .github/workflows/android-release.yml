@@ -8,7 +8,7 @@ on:
         required: true
         default: false
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     if: inputs.rights_verified == true
@@ -64,5 +64,20 @@ jobs:
         with:
           name: PIC_AI-android-arm64-${{ github.run_number }}
           path: build/app/outputs/flutter-apk/app-release.apk
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)
+          BUILD=$((GITHUB_RUN_NUMBER+10000))
+          TAG="v${VERSION}-build${BUILD}"
+          cp build/app/outputs/flutter-apk/app-release.apk PIC_AI.apk
+          gh release create "$TAG" PIC_AI.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "PIC_AI ${VERSION} (build ${BUILD})" \
+            --notes "正式簽章 APK（arm64，小米 MIX 2 / Android 9+）。可直接覆蓋安裝舊版，不需移除。"
       - if: always()
         run: rm -f "$RUNNER_TEMP/pic-ai-release.jks"
