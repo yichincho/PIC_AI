@@ -56,4 +56,27 @@ if prop_line not in current.splitlines():
         current+="\n"
     props.write_text(current+prop_line+"\n")
 
+# Transitive TFLite 2.11 artifacts (via tflite_flutter) share namespace org.tensorflow.lite,
+# which new AGP rejects. Pin them to 2.16.1 in the root project, once.
+root_gradle=root/"android/build.gradle.kts"
+if not root_gradle.exists(): raise RuntimeError("Missing android/build.gradle.kts")
+root_text=root_gradle.read_text()
+if "PIC_AI_TFLITE_PIN" not in root_text:
+    if root_text and not root_text.endswith("\n"):
+        root_text+="\n"
+    root_text+="""
+// PIC_AI_TFLITE_PIN: TFLite 2.11 artifacts share namespace org.tensorflow.lite, which new AGP rejects.
+subprojects {
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "org.tensorflow" && requested.name.startsWith("tensorflow-lite")) {
+                useVersion("2.16.1")
+                because("TFLite 2.11 namespace collision under new AGP")
+            }
+        }
+    }
+}
+"""
+    root_gradle.write_text(root_text)
+
 print("Android wrapper ready. Use stable release key for installable APKs.")
