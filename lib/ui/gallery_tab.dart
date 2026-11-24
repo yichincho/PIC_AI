@@ -113,7 +113,7 @@ class _GalleryTabState extends State<GalleryTab> {
               onTap: s.busy ? null : () => s.toggleSelect(id),
               onLongPress: s.busy ? null : () => showPhotoDetail(context, s, id),
               child: Stack(fit: StackFit.expand, children: [
-                Thumb(key: ValueKey(id), asset: s.assets[id]!, size: 240),
+                PhotoThumb(key: ValueKey(id), asset: s.assets[id]!, size: 240),
                 if (s.selected.contains(id)) const Align(alignment: Alignment.topRight,
                   child: Padding(padding: EdgeInsets.all(2), child: Icon(Icons.check_circle, color: Colors.green))),
                 if (s.rows[id]?['lat'] == null) const Align(alignment: Alignment.bottomLeft,
@@ -140,7 +140,7 @@ Future<void> showPhotoDetail(BuildContext context, AppState s, String id) async 
     title: const Text('照片與地點線索'),
     content: SizedBox(width: 360, child: SingleChildScrollView(child: Column(
       crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Thumb(asset: s.assets[id]!, size: 700),
+        PhotoThumb(asset: s.assets[id]!, size: 700),
         Text('拍攝：${DateTime.fromMillisecondsSinceEpoch(shot)}'),
         Text('原始 GPS：${r["lat"] == null ? "無或無法讀取" : "${r["lat"]}, ${r["lon"]}"}'),
         Text('人工確認地點：${r["place"]}'),
@@ -149,7 +149,7 @@ Future<void> showPhotoDetail(BuildContext context, AppState s, String id) async 
           const Text('前後 30 分鐘有 GPS 的照片（僅供推測，非原始定位）'),
           if (near.isEmpty) const Text('未找到時間線索'),
           for (final x in near.take(5)) ListTile(
-            leading: SizedBox(width: 50, height: 50, child: Thumb(asset: s.assets[x['id']]!, size: 120)),
+            leading: SizedBox(width: 50, height: 50, child: PhotoThumb(asset: s.assets[x['id']]!, size: 120)),
             title: Text('${x["lat"]}, ${x["lon"]}'),
             subtitle: Text('相隔 ${((x["shot"] as int) - shot).abs() ~/ 60000} 分鐘'),
           ),

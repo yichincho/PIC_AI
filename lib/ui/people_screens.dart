@@ -38,7 +38,7 @@ class _PhotoPickerScreenState extends State<PhotoPickerScreen> {
                 return GestureDetector(
                   onTap: () => setState(() { if (!picked.add(id)) picked.remove(id); }),
                   child: Stack(fit: StackFit.expand, children: [
-                    Thumb(key: ValueKey(id), asset: s.assets[id]!, size: 240),
+                    PhotoThumb(key: ValueKey(id), asset: s.assets[id]!, size: 240),
                     if (picked.contains(id)) const Align(alignment: Alignment.topRight,
                       child: Padding(padding: EdgeInsets.all(2), child: Icon(Icons.check_circle, color: Colors.green))),
                   ]));
@@ -112,7 +112,7 @@ class _CandidateReviewScreenState extends State<CandidateReviewScreen> {
           '已檢視 $reviewed 張，剩 ${list.length} 張。這張照片裡有「${widget.name}」嗎？',
           style: const TextStyle(fontSize: 15))),
         Expanded(child: Container(color: Colors.black12, width: double.infinity,
-          child: Thumb(key: ValueKey(list.first), asset: s.assets[list.first]!, size: 1024, fit: BoxFit.contain))),
+          child: PhotoThumb(key: ValueKey(list.first), asset: s.assets[list.first]!, size: 1024, fit: BoxFit.contain))),
         SafeArea(top: false, child: Padding(padding: const EdgeInsets.all(kPad), child: Column(children: [
           Row(children: [
             Expanded(child: FilledButton(onPressed: () => answer(true), child: const Text('是'))),

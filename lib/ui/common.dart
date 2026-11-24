@@ -5,12 +5,12 @@ import '../app_state.dart';
 
 const kPad = 16.0;
 
-class Thumb extends StatefulWidget {
+class PhotoThumb extends StatefulWidget {
   final AssetEntity asset; final int size; final BoxFit fit;
-  const Thumb({super.key, required this.asset, required this.size, this.fit = BoxFit.cover});
-  @override State<Thumb> createState() => _ThumbState();
+  const PhotoThumb({super.key, required this.asset, required this.size, this.fit = BoxFit.cover});
+  @override State<PhotoThumb> createState() => _PhotoThumbState();
 }
-class _ThumbState extends State<Thumb> {
+class _PhotoThumbState extends State<PhotoThumb> {
   late Future<Uint8List?> bytes;
   @override void initState() {
     super.initState();
