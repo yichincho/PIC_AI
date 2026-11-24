@@ -45,6 +45,38 @@ for gradle in (root/"android/app/build.gradle.kts",root/"android/app/build.gradl
             s=s.replace(old,'signingConfig = signingConfigs.getByName("picAiRelease")')
         gradle.write_text(s)
 
+# Release-build fixes: disable lintVital (lint tool crash), add tensorflow-lite-gpu-api
+# (GpuDelegate needs it under R8), and keep TFLite classes reached via JNI/reflection.
+app_gradle=root/"android/app/build.gradle.kts"
+if not app_gradle.exists(): raise RuntimeError("Missing android/app/build.gradle.kts")
+s=app_gradle.read_text()
+if "PIC_AI_LINT" not in s:
+    marker="    buildTypes {"
+    if marker not in s: raise RuntimeError("Unsupported Gradle template")
+    s=s.replace(marker,"""    // PIC_AI_LINT: lintVital crashes (lint tool bug) in release builds.
+    lint {
+        checkReleaseBuilds = false
+    }
+
+"""+marker,1)
+if "PIC_AI_TFLITE_GPU_API" not in s:
+    if not s.endswith("\n"): s+="\n"
+    s+="""
+// PIC_AI_TFLITE_GPU_API: GpuDelegate (tensorflow-lite-gpu 2.16.1) needs classes from gpu-api.
+dependencies {
+    implementation("org.tensorflow:tensorflow-lite-gpu-api:2.16.1")
+}
+"""
+app_gradle.write_text(s)
+proguard=root/"android/app/proguard-rules.pro"
+pg=proguard.read_text() if proguard.exists() else ""
+if "PIC_AI_TFLITE_KEEP" not in pg:
+    if pg and not pg.endswith("\n"): pg+="\n"
+    proguard.write_text(pg+"""# PIC_AI_TFLITE_KEEP: TFLite classes are reached via JNI/reflection
+-keep class org.tensorflow.lite.** { *; }
+-dontwarn org.tensorflow.lite.gpu.**
+""")
+
 # Third-party plugins (e.g. tflite_flutter) compile Java at 1.8 while Kotlin targets 17,
 # which fails Gradle's JVM-target validation. Downgrade it to a warning; the bytecode is
 # fine for minSdk 28.
