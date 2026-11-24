@@ -16,3 +16,4 @@
 - 正式版（release）建置修正：bootstrap 會停用 lintVital（lint 工具本身崩潰）、加入 `tensorflow-lite-gpu-api:2.16.1` 以解決 R8 找不到 GpuDelegateFactory，並在 `proguard-rules.pro` 保留 TFLite 類別；僅經 CI 驗證，GPU delegate 在 MIX 2 真機上尚未測試。
 - v0.3.1+4：修正 Android 9（MIX 2 / MIUI）已授權仍顯示「未取得照片權限」；manifest 補上 `WRITE_EXTERNAL_STORAGE`（maxSdkVersion 29）與 `requestLegacyExternalStorage`，失敗時顯示權限狀態並開啟設定頁。僅經 CI 建置，尚未在 MIX 2 真機驗證。
 - v0.3.2+5：Android 13+ 預設會同時要求相片與影片權限，但 App 只宣告 READ_MEDIA_IMAGES，導致永遠沒有存取權；現改為只要求圖片（含 ACCESS_MEDIA_LOCATION 讀取 GPS）。僅經 CI 建置，尚未在真機驗證。
+- v0.4.0+7：資料庫版本 2→3，只新增 `face_refs` 表（CREATE TABLE IF NOT EXISTS），不改動或刪除既有資料表；覆蓋安裝後既有標籤、地點與參考臉模板應保留，需在 MIX 2 實測覆蓋安裝確認。
