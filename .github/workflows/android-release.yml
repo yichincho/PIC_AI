@@ -49,8 +49,17 @@ jobs:
           set -euo pipefail
           APK=build/app/outputs/flutter-apk/app-release.apk
           TOOL=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
-          ACTUAL=$("$TOOL" verify --print-certs "$APK" | sed -n 's/Signer #1 certificate SHA-256 digest: //p')
-          test "$(echo "$ACTUAL" | tr -d ':' | tr A-F a-f)" = "$(echo "$PIC_AI_CERT_SHA256" | tr -d ':' | tr A-F a-f)"
+          echo "apksigner: $TOOL"
+          CERTS=$("$TOOL" verify --print-certs "$APK")
+          echo "$CERTS" | grep -i "SHA-256" || true
+          ACTUAL=$(echo "$CERTS" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -cd '0-9a-fA-F' | tr 'A-F' 'a-f')
+          EXPECTED=$(printf '%s' "$PIC_AI_CERT_SHA256" | tr -cd '0-9a-fA-F' | tr 'A-F' 'a-f')
+          echo "actual length: ${#ACTUAL}, expected length: ${#EXPECTED}"
+          if [ -z "$ACTUAL" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::APK signer certificate does not match PIC_AI_CERT_SHA256"
+            exit 1
+          fi
+          echo "Certificate OK"
       - uses: actions/upload-artifact@v4
         with:
           name: PIC_AI-android-arm64-${{ github.run_number }}
