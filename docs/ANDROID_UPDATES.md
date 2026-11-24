@@ -13,3 +13,4 @@
 - 僅能透過 CI 驗證，尚未在本機或 MIX 2 真機實測。
 - 同一腳本也會在 `android/build.gradle.kts` 將 `org.tensorflow:tensorflow-lite*` 固定為 2.16.1，避免 TFLite 2.11 的 namespace `org.tensorflow.lite` 重複而在新版 AGP 建置失敗；GPU delegate 與 MIX 2 真機執行尚未驗證。
 - compileSdk 低於 34 的外掛（如 tflite_flutter）會在建置時被提高到 36；minSdk 28 與 targetSdk 不變，因此 MIX 2 (Android 9) 的安裝目標不受影響。
+- 正式版（release）建置修正：bootstrap 會停用 lintVital（lint 工具本身崩潰）、加入 `tensorflow-lite-gpu-api:2.16.1` 以解決 R8 找不到 GpuDelegateFactory，並在 `proguard-rules.pro` 保留 TFLite 類別；僅經 CI 驗證，GPU delegate 在 MIX 2 真機上尚未測試。
