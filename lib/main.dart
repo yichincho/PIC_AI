@@ -80,7 +80,8 @@ class _GalleryState extends State<Gallery> {
       final permission = await PhotoManager.requestPermissionExtend();
       if (!permission.hasAccess) {
         assets.clear(); rows.clear(); results.clear(); selected.clear();
-        throw StateError('未取得照片權限；請到設定開啟。');
+        await PhotoManager.openSetting();
+        throw StateError('未取得照片權限（狀態：${permission.name}）。已開啟設定頁，請允許「儲存空間／照片」後再按一次。');
       }
       assets.clear(); rows.clear(); results.clear(); selected.clear();
       for (int page=0; !stop; page++) {
