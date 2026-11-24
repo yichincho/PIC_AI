@@ -48,7 +48,10 @@ class _GalleryState extends State<Gallery> {
   Future<void> init() async {
     try {
       db = await openDatabase(p.join(await getDatabasesPath(), 'pic_ai_v1.db'),
-        version: 1, onCreate: (d, v) async {
+        version: 2, onUpgrade: (d, old, next) async {
+          if (old < 2) await d.execute('CREATE TABLE IF NOT EXISTS app_meta(key TEXT PRIMARY KEY, value TEXT)');
+        }, onCreate: (d, v) async {
+          await d.execute('CREATE TABLE app_meta(key TEXT PRIMARY KEY, value TEXT)');
           await d.execute('CREATE TABLE photos(id TEXT PRIMARY KEY, shot INTEGER, modified INTEGER, lat REAL, lon REAL, place TEXT DEFAULT "", vector TEXT)');
           await d.execute('CREATE TABLE people(name TEXT PRIMARY KEY)');
           await d.execute('CREATE TABLE tags(photo TEXT, person TEXT, PRIMARY KEY(photo,person))');

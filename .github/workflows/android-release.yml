@@ -1,0 +1,59 @@
+name: Signed Android APK
+on:
+  workflow_dispatch:
+    inputs:
+      rights_verified:
+        description: Model rights and release authorization verified
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+jobs:
+  build:
+    if: inputs.rights_verified == true
+    runs-on: ubuntu-latest
+    env:
+      PIC_AI_KEYSTORE_B64: ${{ secrets.PIC_AI_KEYSTORE_B64 }}
+      PIC_AI_STORE_PASSWORD: ${{ secrets.PIC_AI_STORE_PASSWORD }}
+      PIC_AI_KEY_ALIAS: ${{ secrets.PIC_AI_KEY_ALIAS }}
+      PIC_AI_KEY_PASSWORD: ${{ secrets.PIC_AI_KEY_PASSWORD }}
+      PIC_AI_CERT_SHA256: ${{ secrets.PIC_AI_CERT_SHA256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Restore persistent signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in PIC_AI_KEYSTORE_B64 PIC_AI_STORE_PASSWORD PIC_AI_KEY_ALIAS PIC_AI_KEY_PASSWORD PIC_AI_CERT_SHA256; do
+            test -n "${!name}" || { echo "Missing secret: $name"; exit 1; }
+          done
+          umask 077
+          printf '%s' "$PIC_AI_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/pic-ai-release.jks"
+          echo "PIC_AI_KEYSTORE=$RUNNER_TEMP/pic-ai-release.jks" >> "$GITHUB_ENV"
+      - run: python3 tools/bootstrap.py
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter test
+      - run: flutter build apk --release --target-platform android-arm64 --build-number "$((GITHUB_RUN_NUMBER+10000))"
+      - name: Verify APK certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          TOOL=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          ACTUAL=$("$TOOL" verify --print-certs "$APK" | sed -n 's/Signer #1 certificate SHA-256 digest: //p')
+          test "$(echo "$ACTUAL" | tr -d ':' | tr A-F a-f)" = "$(echo "$PIC_AI_CERT_SHA256" | tr -d ':' | tr A-F a-f)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PIC_AI-android-arm64-${{ github.run_number }}
+          path: build/app/outputs/flutter-apk/app-release.apk
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/pic-ai-release.jks"
