@@ -4,7 +4,9 @@ import 'package:offline_face_recognition/offline_face_recognition.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'face_crop.dart';
 import 'package:mediapipe_retrieval/mediapipe_retrieval.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
@@ -212,36 +214,66 @@ class _GalleryState extends State<Gallery> {
     if(bytes==null) throw StateError('無法取得縮圖');
     return File('${dir.path}/photo.jpg').writeAsBytes(bytes,flush:true);
   }
+  /// 回傳被點選的臉索引；-1 = 略過此張；-2 = 取消全部。
+  Future<int> pickFace(String name, List<Uint8List> crops) async {
+    final r=await showDialog<int>(context:context,barrierDismissible:false,builder:(ctx)=>AlertDialog(
+      title:Text('這張照片中哪一張是「$name」？'),
+      content:SingleChildScrollView(child:Wrap(spacing:8,runSpacing:8,children:[
+        for(var i=0;i<crops.length;i++)
+          InkWell(onTap:()=>Navigator.pop(ctx,i),
+            child:Image.memory(crops[i],width:96,height:96,fit:BoxFit.cover)),
+      ])),
+      actions:[TextButton(onPressed:()=>Navigator.pop(ctx,-1),child:const Text('都不是，略過')),
+        TextButton(onPressed:()=>Navigator.pop(ctx,-2),child:const Text('取消全部'))]));
+    return r??-1;
+  }
   Future<void> enroll() async {
     if(busy || selected.isEmpty || people.isEmpty)return;
     final name=await choosePerson('選擇參考照片中的家人');
     if(name==null || !mounted)return;
     final yes=await showDialog<bool>(context:context,builder:(ctx)=>AlertDialog(
       title:const Text('確認參考照片'),
-      content:const Text('請取得本人或監護人同意。每張選取照片只可包含該家人一張清楚正面臉孔，請勿選合照或其他人的照片。資料保留於本機。'),
+      content:const Text('請取得本人或監護人同意。合照可以，若照片中有多張臉，系統會讓你點選是哪一張。資料只留在本機。'),
       actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('取消')),
         FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('確認'))]));
     if(yes!=true)return;
     final ids=selected.toList();
     setState((){busy=true;status='建立家人參考資料…';});
     Directory? dir;
-    var ok=0, failed=0;
+    var ok=0, failed=0, skipped=0;
+    FaceDetector? detector;
     try {
       final local=await getFaceEngine();
       dir=await Directory.systemTemp.createTemp('pic_ai_reference_');
+      detector=FaceDetector(options:FaceDetectorOptions(performanceMode:FaceDetectorMode.accurate,minFaceSize:0.05));
       for(final id in ids){
+        if(!mounted)break;
         try {
-          final file=await tempPhoto(assets[id]!,dir);
-          await local.register(image:file,id:'${name.length}:$name:$id',label:name);
+          final bytes=await assets[id]!.thumbnailDataWithSize(const ThumbnailSize.square(1024));
+          if(bytes==null) throw StateError('無法取得縮圖');
+          final photo=await File('${dir.path}/photo.jpg').writeAsBytes(bytes,flush:true);
+          final faces=await detector.processImage(InputImage.fromFilePath(photo.path));
+          if(faces.isEmpty){failed++;continue;}
+          final boxes=<FaceBox>[for(final f in faces)(left:f.boundingBox.left,top:f.boundingBox.top,width:f.boundingBox.width,height:f.boundingBox.height)];
+          final crops=cropFaces(bytes,boxes);
+          var index=0;
+          if(crops.length>1){
+            final pick=await pickFace(name,crops);
+            if(pick==-2)break;
+            if(pick<0){skipped++;continue;}
+            index=pick;
+          }
+          final cropFile=await File('${dir.path}/face_$index.jpg').writeAsBytes(crops[index],flush:true);
+          await local.register(image:cropFile,id:'${name.length}:$name:$id:f$index',label:name);
           await db!.insert('tags',{'photo':id,'person':name},conflictAlgorithm:ConflictAlgorithm.ignore);
           ok++;
         } catch(_){failed++;}
       }
       selected.clear();faceCandidates.clear();candidateMode=false;
       await refresh();
-      if(mounted)setState(()=>status='已登錄 $ok 張參考照片，失敗 $failed 張。');
+      if(mounted)setState(()=>status='已登錄 $ok 張參考照片，略過 $skipped 張，失敗 $failed 張（含找不到臉）。');
     } catch(e){if(mounted)setState(()=>status='參考資料建立失敗：$e');}
-    finally{try{await dir?.delete(recursive:true);}finally{if(mounted)setState(()=>busy=false);}}
+    finally{try{await detector?.close();await dir?.delete(recursive:true);}finally{if(mounted)setState(()=>busy=false);}}
   }
   Future<void> findFamily() async {
     if(busy || assets.isEmpty || people.isEmpty)return;
