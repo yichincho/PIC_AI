@@ -52,7 +52,7 @@ jobs:
           echo "apksigner: $TOOL"
           CERTS=$("$TOOL" verify --print-certs "$APK")
           echo "$CERTS" | grep -i "SHA-256" || true
-          ACTUAL=$(echo "$CERTS" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -cd '0-9a-fA-F' | tr 'A-F' 'a-f')
+          ACTUAL=$(echo "$CERTS" | grep -iE '(Signer #1|Signer):? certificate SHA-256 digest:' | head -1 | sed 's/.*SHA-256 digest: //' | tr -cd '0-9a-fA-F' | tr 'A-F' 'a-f')
           EXPECTED=$(printf '%s' "$PIC_AI_CERT_SHA256" | tr -cd '0-9a-fA-F' | tr 'A-F' 'a-f')
           echo "actual length: ${#ACTUAL}, expected length: ${#EXPECTED}"
           if [ -z "$ACTUAL" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
