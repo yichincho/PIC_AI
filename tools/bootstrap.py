@@ -45,4 +45,62 @@ for gradle in (root/"android/app/build.gradle.kts",root/"android/app/build.gradl
             s=s.replace(old,'signingConfig = signingConfigs.getByName("picAiRelease")')
         gradle.write_text(s)
 
+# Third-party plugins (e.g. tflite_flutter) compile Java at 1.8 while Kotlin targets 17,
+# which fails Gradle's JVM-target validation. Downgrade it to a warning; the bytecode is
+# fine for minSdk 28.
+props=root/"android/gradle.properties"
+prop_line="kotlin.jvm.target.validation.mode=warning"
+current=props.read_text() if props.exists() else ""
+if prop_line not in current.splitlines():
+    if current and not current.endswith("\n"):
+        current+="\n"
+    props.write_text(current+prop_line+"\n")
+
+# Transitive TFLite 2.11 artifacts (via tflite_flutter) share namespace org.tensorflow.lite,
+# which new AGP rejects. Pin them to 2.16.1 in the root project, once.
+root_gradle=root/"android/build.gradle.kts"
+if not root_gradle.exists(): raise RuntimeError("Missing android/build.gradle.kts")
+root_text=root_gradle.read_text()
+if "PIC_AI_TFLITE_PIN" not in root_text:
+    if root_text and not root_text.endswith("\n"):
+        root_text+="\n"
+    root_text+="""
+// PIC_AI_TFLITE_PIN: TFLite 2.11 artifacts share namespace org.tensorflow.lite, which new AGP rejects.
+subprojects {
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "org.tensorflow" && requested.name.startsWith("tensorflow-lite")) {
+                useVersion("2.16.1")
+                because("TFLite 2.11 namespace collision under new AGP")
+            }
+        }
+    }
+}
+"""
+    root_gradle.write_text(root_text)
+
+# Some plugins (tflite_flutter) still compile against android-31, but their androidx
+# dependencies need compileSdk >= 34. Raise only those at build time; minSdk/targetSdk
+# of the app are unchanged. state.executed guard: the template's evaluationDependsOn(":app")
+# may already have evaluated some projects.
+root_text=root_gradle.read_text()
+if "PIC_AI_PLUGIN_COMPILESDK" not in root_text:
+    if not root_text.endswith("\n"):
+        root_text+="\n"
+    root_text+="""
+// PIC_AI_PLUGIN_COMPILESDK: some plugins (tflite_flutter) still compile against android-31.
+subprojects {
+    if (!project.state.executed) {
+        project.afterEvaluate {
+            project.extensions.findByType(com.android.build.api.dsl.LibraryExtension::class.java)?.let { lib ->
+                if ((lib.compileSdk ?: 0) < 34) {
+                    lib.compileSdk = 36
+                }
+            }
+        }
+    }
+}
+"""
+    root_gradle.write_text(root_text)
+
 print("Android wrapper ready. Use stable release key for installable APKs.")
