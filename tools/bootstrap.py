@@ -45,4 +45,15 @@ for gradle in (root/"android/app/build.gradle.kts",root/"android/app/build.gradl
             s=s.replace(old,'signingConfig = signingConfigs.getByName("picAiRelease")')
         gradle.write_text(s)
 
+# Third-party plugins (e.g. tflite_flutter) compile Java at 1.8 while Kotlin targets 17,
+# which fails Gradle's JVM-target validation. Downgrade it to a warning; the bytecode is
+# fine for minSdk 28.
+props=root/"android/gradle.properties"
+prop_line="kotlin.jvm.target.validation.mode=warning"
+current=props.read_text() if props.exists() else ""
+if prop_line not in current.splitlines():
+    if current and not current.endswith("\n"):
+        current+="\n"
+    props.write_text(current+prop_line+"\n")
+
 print("Android wrapper ready. Use stable release key for installable APKs.")
