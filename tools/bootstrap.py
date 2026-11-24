@@ -18,6 +18,13 @@ permissions="""<uses-permission android:name="android.permission.INTERNET"/>
 if "READ_MEDIA_IMAGES" not in s:
     s=s.replace("<application",permissions+"\n    <application",1)
 s=s.replace("<application", '<application android:allowBackup="false"', 1) if "android:allowBackup" not in s else s
+# Android <= 29 path of photo_manager: some Android 9/OEM devices report "granted" but
+# hasAccess is false unless WRITE_EXTERNAL_STORAGE (<= 29) is declared. Own marker checks so
+# already generated manifests are patched too.
+if "WRITE_EXTERNAL_STORAGE" not in s:
+    s=s.replace("<application",'<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>\n    <application',1)
+if "android:requestLegacyExternalStorage" not in s:
+    s=s.replace("<application",'<application android:requestLegacyExternalStorage="true"',1)
 manifest.write_text(s)
 for gradle in (root/"android/app/build.gradle.kts",root/"android/app/build.gradle"):
     if gradle.exists():
