@@ -77,7 +77,11 @@ class _GalleryState extends State<Gallery> {
     setState(() {busy=true;stop=false;status='讀取相簿權限…';});
     int failures=0, embedded=0;
     try {
-      final permission = await PhotoManager.requestPermissionExtend();
+      final permission = await PhotoManager.requestPermissionExtend(
+        requestOption: const PermissionRequestOption(
+          androidPermission: AndroidPermission(type: RequestType.image, mediaLocation: true),
+        ),
+      );
       if (!permission.hasAccess) {
         assets.clear(); rows.clear(); results.clear(); selected.clear();
         await PhotoManager.openSetting();

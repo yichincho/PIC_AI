@@ -1,7 +1,7 @@
 name: pic_ai
 description: Private local family photo search
 publish_to: none
-version: 0.3.1+4
+version: 0.3.2+5
 environment:
   sdk: '>=3.10.0 <4.0.0'
 dependencies:
