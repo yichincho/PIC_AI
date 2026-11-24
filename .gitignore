@@ -1,0 +1,14 @@
+/.dart_tool/
+/build/
+/android/
+/ios/
+*.db
+*.db-shm
+*.db-wal
+*.litertlm
+*.onnx
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+.env
